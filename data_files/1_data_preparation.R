@@ -6,7 +6,7 @@ library(MASS)
 library(readstata13)
 
 rm(list = ls())
-setwd("~")
+# setwd("~")
 load("data/stacked_raw_data.RData")
 
 

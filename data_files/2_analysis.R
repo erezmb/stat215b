@@ -6,7 +6,7 @@ library(modelsummary) # for R2 stats
 
 rm(list = ls())
 
-setwd("~")
+# setwd("~")
 load("data/aff_pol_df_analy_jan2023.RData")
 
 
