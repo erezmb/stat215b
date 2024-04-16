@@ -242,9 +242,10 @@ na.set <- function(x, val) ifelse(is.na(x), val, x)
 normalize.party.name <- function(nm) gsub("–", "-", nm)
 encode.party <- function(party.nm, country) {
   # party name to {1, 2, ..., 8, None, Other}
+  lr.parties.nrm <- lapply(lr.parties, normalize.party.name)
   party.nm %<>% normalize.party.name
   ifelse(party.nm == no.party.response[country], "None",
-         na.set(inner.match(party.nm, country, lr.parties), "Other"))
+         na.set(inner.match(party.nm, country, lr.parties.nrm), "Other"))
 }
 get.cols <- function(idx, cols) {
   # returns out[i] = cols[idx[i]]
@@ -254,12 +255,16 @@ get.cols <- function(idx, cols) {
   vcols[1:length(idx) + (idx - 1) * nrow(cols)]
 }
 enrich.party.stance <- function(data) {
-  # add columns with information on party stance
+  # add columns with information on party stance, fix missing values
+  cols <- paste0("lrpos_party", 1:8)
+  for (val in c(98, 99)) {
+    data[,cols][data[,cols] == val] <- NA
+  }
   within(data, {
     player1.party <- encode.party(Q52, country);
     player2.party <- encode.party(partydrawn, country);
-    player1.party.lrpos <- get.cols(player1.party, data[,paste0("lrpos_party", 1:8)]);
-    player2.party.lrpos <- get.cols(player2.party, data[,paste0("lrpos_party", 1:8)]);
+    player1.party.lrpos <- get.cols(player1.party, data[,cols]);
+    player2.party.lrpos <- get.cols(player2.party, data[,cols]);
   })
 }
 filter.party.stance <- function(data) {
@@ -270,4 +275,8 @@ filter.party.stance <- function(data) {
             paste0("lrpos_party", 1:8), "player1.party", "player1.party.lrpos")
   data %<>% subset(select=cols)
   data
+}
+analysis.placement.within.party <- function(data) {
+  data %<>% subset(player1.party %notin% c("None", "Other"))
+  with(data, table(is.na(lrpos), is.na(player1.party.lrpos))) %>% prop.table
 }
