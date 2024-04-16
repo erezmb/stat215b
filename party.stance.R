@@ -239,8 +239,10 @@ inner.match <- function(x, nm, l) {
   l.idx[match(paste(nm, x), paste(l.nm, unlist(l, use.names=F)))]
 }
 na.set <- function(x, val) ifelse(is.na(x), val, x)
+normalize.party.name <- function(nm) gsub("–", "-", nm)
 encode.party <- function(party.nm, country) {
   # party name to {1, 2, ..., 8, None, Other}
+  party.nm %<>% normalize.party.name
   ifelse(party.nm == no.party.response[country], "None",
          na.set(inner.match(party.nm, country, lr.parties), "Other"))
 }
@@ -254,13 +256,18 @@ get.cols <- function(idx, cols) {
 enrich.party.stance <- function(data) {
   # add columns with information on party stance
   within(data, {
-    player1.lrpos <- lrpos
     player1.party <- encode.party(Q52, country);
     player2.party <- encode.party(partydrawn, country);
     player1.party.lrpos <- get.cols(player1.party, data[,paste0("lrpos_party", 1:8)]);
     player2.party.lrpos <- get.cols(player2.party, data[,paste0("lrpos_party", 1:8)]);
   })
 }
-analyze.party.stance <- function(data) {
-  
+filter.party.stance <- function(data) {
+  data %<>% subset(PID %in% names(which(table(PID) == 6)))
+  data %<>% subset(player1.party %in% 1:8)
+  data %<>% subset(in.place.tapply(PID, PID, seq_along) == 1)
+  cols <- c("country", "age_continuous", "sex", "class", "rel_belief", "lrpos", 
+            paste0("lrpos_party", 1:8), "player1.party", "player1.party.lrpos")
+  data %<>% subset(select=cols)
+  data
 }
