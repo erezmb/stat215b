@@ -1,5 +1,5 @@
 lr.parties <- list(
-  # ordered list of party1, party2, ..., party8 by country
+  ### ordered list of party1, party2, ..., party8 by country ###
   Aus = c("Österreichische Volkspartei (ÖVP)", 
           "Sozialdemokratische Partei Österreich (SPÖ)",
           "Freiheitliche Partei Österreichs (FPÖ)",
@@ -202,7 +202,7 @@ lr.parties <- list(
          "UK Independence Party (UKIP)")
 )
 no.party.response <- c(
-  # Q52 response indicating no party
+  ### Q52 response indicating no party ###
   Aus="Nein, ich stehe keiner politischen Partei nahe",
   Bel="Nee, ik voel mij niet verbonden met een politieke partij",
   Bul="Не, не се чувствате близък/а до която и да е политическа партия",
@@ -229,7 +229,7 @@ no.party.response <- c(
   Swe="Nej, du anser dig inte stå nära något politiskt",
   UK="No, I do not feel close to any political party")
 inner.match <- function(x, nm, l) {
-  # look for the index of x in l[[nm]]
+  ### look for the index of x in l[[nm]] ###
   stopifnot(length(x) == length(nm))
   l.ln <- sapply(l, length)
   l.nm <- rep(names(l), l.ln)
@@ -241,21 +241,21 @@ inner.match <- function(x, nm, l) {
 na.set <- function(x, val) ifelse(is.na(x), val, x)
 normalize.party.name <- function(nm) gsub("–", "-", nm)
 encode.party <- function(party.nm, country) {
-  # party name to {1, 2, ..., 8, None, Other}
+  ### party name to {1, 2, ..., 8, None, Other} ###
   lr.parties.nrm <- lapply(lr.parties, normalize.party.name)
   party.nm %<>% normalize.party.name
   ifelse(party.nm == no.party.response[country], "None",
          na.set(inner.match(party.nm, country, lr.parties.nrm), "Other"))
 }
 get.cols <- function(idx, cols) {
-  # returns out[i] = cols[idx[i]]
+  ### returns out[i] = cols[idx[i]] ###
   stopifnot(length(idx) == nrow(cols))
   vcols <- unlist(cols, use.names=F)
   suppressWarnings(idx <- as.numeric(idx))
   vcols[1:length(idx) + (idx - 1) * nrow(cols)]
 }
 enrich.party.stance <- function(data) {
-  # add columns with information on party stance, fix missing values
+  ### add columns with information on party stance, fix missing values ###
   cols <- paste0("lrpos_party", 1:8)
   for (val in c(98, 99)) {
     data[,cols][data[,cols] == val] <- NA
@@ -268,15 +268,39 @@ enrich.party.stance <- function(data) {
   })
 }
 filter.party.stance <- function(data) {
+  ### subset data as appropriate for party stance analysis ###
   data %<>% subset(PID %in% names(which(table(PID) == 6)))
-  data %<>% subset(player1.party %in% 1:8)
+  data %<>% subset(player1.party %notin% c("None", "Other"))
   data %<>% subset(in.place.tapply(PID, PID, seq_along) == 1)
   cols <- c("country", "age_continuous", "sex", "class", "rel_belief", "lrpos", 
             paste0("lrpos_party", 1:8), "player1.party", "player1.party.lrpos")
   data %<>% subset(select=cols)
   data
 }
-analysis.placement.within.party <- function(data) {
-  data %<>% subset(player1.party %notin% c("None", "Other"))
-  with(data, table(is.na(lrpos), is.na(player1.party.lrpos))) %>% prop.table
+analysis.placement.within.party <- function(data, fdr.q, counterfactual.alpha) {
+  ### compute placement within party analysis ###
+  n.total <- table(as.character(data$country)) # remember total including missing values
+  data %<>% subset(!is.na(player1.party.lrpos) & !is.na(lrpos)) # drop missing values
+  # loop over countries
+  out <- do.call(rbind, lapply(names(n.total), function(cc) {
+    data.cc <- subset(data, country == cc)
+    x <- with(data.cc, abs(player1.party.lrpos - 6) - abs(lrpos - 6)) # difference in extremism
+    n <- length(x)
+    p <- pnorm(-abs(mean(x)) / sd(x) * sqrt(n)) # p value of z test
+    # estimate how different missing data should be to negate significance
+    missing.x <- rnorm(n.total[cc] - n, 0, sd(x))
+    missing.x <- missing.x - mean(y)
+    missing.mean <- seq(-11, abs(mean(x)), 0.01)
+    total.p <- sapply(missing.mean, function(m) { 
+      total.x <- c(x * sign(mean(x)), missing.x + m)
+      pnorm(-abs(mean(total.x)) / sd(total.x) * sqrt(length(total.x)))
+    })
+    counterfactual.mean <- missing.mean[max(which(total.p >= counterfactual.alpha))] * sign(mean(x))
+    data.frame(country=cc, n=n, mean=mean(x), p=p, n.missing=n.total[cc] - n, counterfactual.mean=counterfactual.mean)
+  }))
+  # compute false discovery rate
+  p <- sort(setNames(out$p, out$country))
+  i.max <- max(which(p <= 1:length(p) / length(p) * fdr.q))
+  out$rejected <- out$country %in% names(p)[1:i.max]
+  out
 }
