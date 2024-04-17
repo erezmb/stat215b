@@ -287,6 +287,7 @@ analyze.placement.within.party <- function(data, fdr.q, counterfactual.alpha) {
     x <- with(data.cc, abs(player1.party.lrpos - 6) - abs(lrpos - 6)) # difference in extremism
     n <- length(x)
     p <- pnorm(-abs(mean(x)) / sd(x) * sqrt(n)) # p value of z test
+    p <- min(2 * p, 1) # make two-sided
     # estimate how different missing data should be to negate significance
     missing.x <- rnorm(n.total[cc] - n, 0, sd(x))
     missing.x <- missing.x - mean(y)
@@ -295,7 +296,7 @@ analyze.placement.within.party <- function(data, fdr.q, counterfactual.alpha) {
       total.x <- c(x * sign(mean(x)), missing.x + m)
       pnorm(-abs(mean(total.x)) / sd(total.x) * sqrt(length(total.x)))
     })
-    counterfactual.mean <- missing.mean[max(which(total.p >= counterfactual.alpha))] * sign(mean(x))
+    counterfactual.mean <- missing.mean[max(which(2 * total.p >= counterfactual.alpha))] * sign(mean(x))
     data.frame(country=cc, n=n, mean=mean(x), p=p, n.missing=n.total[cc] - n, counterfactual.mean=counterfactual.mean)
   }))
   # compute false discovery rate
@@ -303,4 +304,7 @@ analyze.placement.within.party <- function(data, fdr.q, counterfactual.alpha) {
   i.max <- max(which(p <= 1:length(p) / length(p) * fdr.q))
   out$rejected <- out$country %in% names(p)[1:i.max]
   out
+}
+analyze.opposide.side.perception <- function(data, fdr.q) {
+  
 }
