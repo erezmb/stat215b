@@ -293,13 +293,14 @@ enrich.party.stance <- function(data) {
   within(data, {
     player1.party <- encode.party(Q52, country);
     player2.party <- encode.party(partydrawn, country);
-    player1.party.freq <- ifelse(player1.party == "None", NA, in.place.tapply(Q52, list(country, Q52), length) / in.place.tapply(player1.party != "None", country, sum));
+    player1.party.freq <- ifelse(player1.party %in% c("None", "Other"), NA, in.place.tapply(Q52, paste(country, Q52), length) / in.place.tapply(player1.party != "None", country, sum));
     player1.party.lrpos <- get.cols(player1.party, data[,cols]);
     player2.party.lrpos <- get.cols(player2.party, data[,cols]);
   })
 }
 filter.party.stance <- function(data) {
   ### subset data as appropriate for party stance analysis ###
+  data %<>% transform(country = as.character(country))
   data %<>% subset(PID %in% names(which(table(PID) == 6)))
   data %<>% subset(player1.party %in% 1:8)
   data %<>% subset(in.place.tapply(PID, PID, seq_along) == 1)
