@@ -277,7 +277,7 @@ filter.party.stance <- function(data) {
   data %<>% subset(select=cols)
   data
 }
-analysis.placement.within.party <- function(data, fdr.q, counterfactual.alpha) {
+analyze.placement.within.party <- function(data, fdr.q, counterfactual.alpha) {
   ### compute placement within party analysis ###
   n.total <- table(as.character(data$country)) # remember total including missing values
   data %<>% subset(!is.na(player1.party.lrpos) & !is.na(lrpos)) # drop missing values
