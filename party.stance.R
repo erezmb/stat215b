@@ -227,7 +227,36 @@ no.party.response <- c(
   Slovenia="Ne počutite se blizu nobeni politični stranki",
   Spa="No, no me siento próximo/a a ningún partido",
   Swe="Nej, du anser dig inte stå nära något politiskt",
-  UK="No, I do not feel close to any political party")
+  UK="No, I do not feel close to any political party"
+  )
+other.party.response <- c(
+  ### Q52 response 'other (fill in the blank)' ###
+  Aus="Andere (bitte ausfüllen)",
+  Bel="Anders (vul in)",
+  Bul="Друго [попълнете празното поле]",
+  Cro="Ostalo [upišite u prazninu]",
+  Cze="Jine",
+  Den="Andet (udfyld tomt felt)",
+  Est="Muu [täitke väli]",
+  Fin="Muu [täytä tyhjä kenttä]",
+  Fra="Autre (veuillez compléter)",
+  Ger="Andere (bitte ausfüllen)",
+  Gre="Άλλο",
+  Hun="Egyéb (töltse ki)",
+  Ire="Other (fill the blank)",
+  Ita="Altro (completare)",
+  Lat="Cits [aizpildiet tukšo lauciņu]",
+  Lit=NA,
+  Net="Anders (vul in)",
+  Pol="Inne (proszę uzupełnić)",
+  Por="Outro [preencha o espaço em branco]",
+  Rom="Altul",
+  Solvakia="Iné [vyplňte prázdne miesto]",
+  Slovenia="Drugo (izpolnite)",
+  Spa="Otro (escríbalo en el espacio en blanco)",
+  Swe="Annat (fyll i)",
+  UK="Other (fill the blank)"
+  )
 inner.match <- function(x, nm, l) {
   ### look for the index of x in l[[nm]] ###
   stopifnot(length(x) == length(nm))
@@ -241,11 +270,12 @@ inner.match <- function(x, nm, l) {
 na.set <- function(x, val) ifelse(is.na(x), val, x)
 normalize.party.name <- function(nm) gsub("–", "-", nm)
 encode.party <- function(party.nm, country) {
-  ### party name to {1, 2, ..., 8, None, Other} ###
+  ### party name to {1, 2, ..., 8, None, Other, Unranked} ###
   lr.parties.nrm <- lapply(lr.parties, normalize.party.name)
   party.nm %<>% normalize.party.name
   ifelse(party.nm == no.party.response[country], "None",
-         na.set(inner.match(party.nm, country, lr.parties.nrm), "Other"))
+         ifelse(party.nm == na.set(other.party.response[country], "unlikely to match"), "Other",
+                na.set(inner.match(party.nm, country, lr.parties.nrm), "Unranked")))
 }
 get.cols <- function(idx, cols) {
   ### returns out[i] = cols[idx[i]] ###
@@ -263,6 +293,7 @@ enrich.party.stance <- function(data) {
   within(data, {
     player1.party <- encode.party(Q52, country);
     player2.party <- encode.party(partydrawn, country);
+    player1.party.freq <- ifelse(player1.party == "None", NA, in.place.tapply(Q52, list(country, Q52), length) / in.place.tapply(player1.party != "None", country, sum));
     player1.party.lrpos <- get.cols(player1.party, data[,cols]);
     player2.party.lrpos <- get.cols(player2.party, data[,cols]);
   })
@@ -270,10 +301,11 @@ enrich.party.stance <- function(data) {
 filter.party.stance <- function(data) {
   ### subset data as appropriate for party stance analysis ###
   data %<>% subset(PID %in% names(which(table(PID) == 6)))
-  data %<>% subset(player1.party %notin% c("None", "Other"))
+  data %<>% subset(player1.party %in% 1:8)
   data %<>% subset(in.place.tapply(PID, PID, seq_along) == 1)
   cols <- c("country", "age_continuous", "sex", "class", "rel_belief", "lrpos", 
-            paste0("lrpos_party", 1:8), "player1.party", "player1.party.lrpos")
+            paste0("lrpos_party", 1:8), "player1.party", "player1.party.freq", 
+            "player1.party.lrpos")
   data %<>% subset(select=cols)
   data
 }
@@ -289,8 +321,9 @@ analyze.placement.within.party <- function(data, fdr.q, counterfactual.alpha) {
     p <- pnorm(-abs(mean(x)) / sd(x) * sqrt(n)) # p value of z test
     p <- min(2 * p, 1) # make two-sided
     # estimate how different missing data should be to negate significance
-    missing.x <- rnorm(n.total[cc] - n, 0, sd(x))
-    missing.x <- missing.x - mean(y)
+    missing.x <- rnorm(n.total[cc] - n, 0, 1)
+    missing.x <- missing.x - mean(missing.x)
+    missing.x <- missing.x / sd(missing.x) * sd(x)
     missing.mean <- seq(-11, abs(mean(x)), 0.01)
     total.p <- sapply(missing.mean, function(m) { 
       total.x <- c(x * sign(mean(x)), missing.x + m)
@@ -306,5 +339,8 @@ analyze.placement.within.party <- function(data, fdr.q, counterfactual.alpha) {
   out
 }
 analyze.opposide.side.perception <- function(data, fdr.q) {
+  self.perception <- with(data, tapply(player1.party.lrpos, list(country, player1.party), mean, na.rm=T))
+  left.parties <- self.perception < 6
+  left.perception <- with(subset(data, player1.party %in% left.parties))
   
 }
