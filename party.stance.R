@@ -291,11 +291,11 @@ enrich.party.stance <- function(data) {
     data[,cols][data[,cols] == val] <- NA
   }
   within(data, {
-    player1.party <- encode.party(Q52, country);
-    player2.party <- encode.party(partydrawn, country);
-    player1.party.freq <- ifelse(player1.party %in% c("None", "Other"), NA, in.place.tapply(Q52, paste(country, Q52), length) / in.place.tapply(player1.party != "None", country, sum));
-    player1.party.lrpos <- get.cols(player1.party, data[,cols]);
-    player2.party.lrpos <- get.cols(player2.party, data[,cols]);
+    player1.party <- encode.party(Q52, country)
+    player2.party <- encode.party(partydrawn, country)
+    player1.party.freq <- ifelse(player1.party %in% c("None", "Other"), NA, in.place.tapply(Q52, paste(country, Q52), length) / in.place.tapply(player1.party != "None", country, sum))
+    player1.party.lrpos <- get.cols(player1.party, data[,cols])
+    player2.party.lrpos <- get.cols(player2.party, data[,cols])
   })
 }
 fdr <- function(p.val, q) {
@@ -316,6 +316,7 @@ filter.party.stance <- function(data) {
   data %<>% transform(country = as.character(country))
   data %<>% subset(PID %in% names(which(table(PID) == 6)))
   data %<>% subset(in.place.tapply(PID, PID, seq_along) == 1)
+  data %<>% subset(player1.party %in% 1:8) # data were not collected for other parties
   cols <- c("country", "age_continuous", "sex", "class", "rel_belief", "lrpos", 
             paste0("lrpos_party", 1:8), "player1.party", "player1.party.freq", 
             "player1.party.lrpos")
@@ -324,7 +325,6 @@ filter.party.stance <- function(data) {
 }
 analyze.placement.within.party <- function(data, fdr.q, counterfactual.alpha) {
   ### compute placement within party analysis ###
-  data %<>% subset(player1.party %in% 1:8) # data were not collected for other parties
   n.total <- table(as.character(data$country)) # remember total including missing values
   data %<>% subset(!is.na(player1.party.lrpos) & !is.na(lrpos)) # drop missing values
   # loop over countries
@@ -352,10 +352,19 @@ analyze.placement.within.party <- function(data, fdr.q, counterfactual.alpha) {
 analyze.opposide.side.perception <- function(data, fdr.q, bt.num.iterations) {
   compute.statistic <- function(data) {
     # TODO: handle missing data
-    self.perception <- with(subset(data, player1.party %in% 1:8), tapply(player1.party.lrpos, player1.party, mean, na.rm=T))
-    left.perception <- colMeans(data[data$lrpos < 6, paste0("lrpos_party", 1:8)], na.rm=T)
-    right.perception <- colMeans(data[data$lrpos > 6, paste0("lrpos_party", 1:8)], na.rm=T)
-    mean(abs(ifelse(self.perception > 6, left.perception, right.perception) - 6) - abs(self.perception - 6), na.rm=T)
+    is.right <- with(data, tapply(player1.party.lrpos, player1.party, mean, na.rm=T) > 6)
+    data %<>% transform(.is.right = is.right[player1.party])
+    left.perception <- setNames(colMeans(data[!data$.is.right, paste0("lrpos_party", 1:8)], na.rm=T), 1:8)
+    right.perception <- setNames(colMeans(data[data$.is.right, paste0("lrpos_party", 1:8)], na.rm=T), 1:8)
+    data %<>% within({
+      .left.perception = left.perception[player1.party]
+      .right.perception = right.perception[player1.party]
+      .proponent.perception = ifelse(.is.right, .right.perception, .left.perception)
+      .opponent.perception = ifelse(!.is.right, .right.perception, .left.perception)
+    })
+    stat <- with(data, mean(abs(.opponent.perception - 6) - abs(.proponent.perception - 6), na.rm=T))
+    stat <- na.set(stat, 0) # possibly data contain parties from one side only
+    stat
   }
   # loop over countries
   out <- do.call(rbind, lapply(unique(data$country), function(cc) {
@@ -370,7 +379,7 @@ analyze.opposide.side.perception <- function(data, fdr.q, bt.num.iterations) {
     cat("\n")
     # bias corrected bootstrap percentile
     z0 <- qnorm(mean(bt.stat <= stat)) # (negative) bias
-    p0 <- mean(bt.stat * sign(stat) < 0) # sample percentile of null hypothesis
+    p0 <- mean(bt.stat < 0) # sample percentile of null hypothesis
     p <- pnorm(qnorm(p0) - 2 * z0)
     data.frame(country=cc, n=nrow(data.cc), mean=stat, p=p)
   }))
