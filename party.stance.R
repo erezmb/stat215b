@@ -298,11 +298,23 @@ enrich.party.stance <- function(data) {
     player2.party.lrpos <- get.cols(player2.party, data[,cols]);
   })
 }
+fdr <- function(p.val, q) {
+  n <- length(p.val)
+  # sort p.val and keep track of ordering
+  idx <- 1:n
+  ord <- order(p.val)
+  p.val <- p.val[ord]
+  idx <- idx[ord]
+  # compute fdr
+  rejected <- p.val <= 1:n / n * q
+  rejected <- rev(cumsum(rev(rejected)) >= 1) # set all F before T to T
+  # revert ordering
+  rejected[order(idx)]
+}
 filter.party.stance <- function(data) {
   ### subset data as appropriate for party stance analysis ###
   data %<>% transform(country = as.character(country))
   data %<>% subset(PID %in% names(which(table(PID) == 6)))
-  data %<>% subset(player1.party %in% 1:8)
   data %<>% subset(in.place.tapply(PID, PID, seq_along) == 1)
   cols <- c("country", "age_continuous", "sex", "class", "rel_belief", "lrpos", 
             paste0("lrpos_party", 1:8), "player1.party", "player1.party.freq", 
@@ -312,6 +324,7 @@ filter.party.stance <- function(data) {
 }
 analyze.placement.within.party <- function(data, fdr.q, counterfactual.alpha) {
   ### compute placement within party analysis ###
+  data %<>% subset(player1.party %in% 1:8) # data were not collected for other parties
   n.total <- table(as.character(data$country)) # remember total including missing values
   data %<>% subset(!is.na(player1.party.lrpos) & !is.na(lrpos)) # drop missing values
   # loop over countries
@@ -333,15 +346,34 @@ analyze.placement.within.party <- function(data, fdr.q, counterfactual.alpha) {
     counterfactual.mean <- missing.mean[max(which(2 * total.p >= counterfactual.alpha))] * sign(mean(x))
     data.frame(country=cc, n=n, mean=mean(x), p=p, n.missing=n.total[cc] - n, counterfactual.mean=counterfactual.mean)
   }))
-  # compute false discovery rate
-  p <- sort(setNames(out$p, out$country))
-  i.max <- max(which(p <= 1:length(p) / length(p) * fdr.q))
-  out$rejected <- out$country %in% names(p)[1:i.max]
+  out$rejected <- fdr(out$p, fdr.q)
   out
 }
-analyze.opposide.side.perception <- function(data, fdr.q) {
-  self.perception <- with(data, tapply(player1.party.lrpos, list(country, player1.party), mean, na.rm=T))
-  left.parties <- self.perception < 6
-  left.perception <- with(subset(data, player1.party %in% left.parties))
-  
+analyze.opposide.side.perception <- function(data, fdr.q, bt.num.iterations) {
+  compute.statistic <- function(data) {
+    # TODO: handle missing data
+    self.perception <- with(subset(data, player1.party %in% 1:8), tapply(player1.party.lrpos, player1.party, mean, na.rm=T))
+    left.perception <- colMeans(data[data$lrpos < 6, paste0("lrpos_party", 1:8)], na.rm=T)
+    right.perception <- colMeans(data[data$lrpos > 6, paste0("lrpos_party", 1:8)], na.rm=T)
+    mean(abs(ifelse(self.perception > 6, left.perception, right.perception) - 6) - abs(self.perception - 6), na.rm=T)
+  }
+  # loop over countries
+  out <- do.call(rbind, lapply(unique(data$country), function(cc) {
+    cat(cc)
+    data.cc <- subset(data, country == cc)
+    stat <- compute.statistic(data.cc)
+    # bootstrap iterations
+    bt.stat <- sapply(1:bt.num.iterations, function(i) {
+      if (i %% 100 == 1) cat(".")
+      compute.statistic(data.cc[sample.int(nrow(data.cc), replace=T),])
+    })
+    cat("\n")
+    # bias corrected bootstrap percentile
+    z0 <- qnorm(mean(bt.stat <= stat)) # (negative) bias
+    p0 <- mean(bt.stat * sign(stat) < 0) # sample percentile of null hypothesis
+    p <- pnorm(qnorm(p0) - 2 * z0)
+    data.frame(country=cc, n=nrow(data.cc), mean=stat, p=p)
+  }))
+  out$rejected <- fdr(out$p, fdr.q)
+  out
 }
