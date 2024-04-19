@@ -389,80 +389,114 @@ analyze.opposide.side.perception <- function(data, fdr.q, bt.num.iterations) {
 lda <- function(xt, yt, xv) {
   ### linear discriminant analysis ###
   cl <- sort(unique(yt))
-  stopifnot(all(cl == 1:length(cl)))
   pi <- prop.table(table(yt))
-  mu <- sapply(cl, function(i) colMeans(xt[yt == i,]))
+  mu <- sapply(cl, function(i) colMeans(xt[yt == i,,drop=F]))
   sigma <- Reduce("+", lapply(cl, function(i) {
-    xtc <- t(t(xt[yt == i,]) - mu[,i]) # xt centered
+    xtc <- t(t(xt[yt == i,,drop=F]) - mu[,match(i, cl)]) # xt centered
     t(xtc) %*% xtc
   }), 0) / (nrow(xt) - length(cl))
   b <- solve(sigma) %*% mu # y.hat = argmax(b*x + a)
   a <- as.numeric(log(pi) - diag(t(mu) %*% b / 2))
   yv.hat <- t(t(xv %*% b) + a)
-  yv.hat <- unname(apply(yv.hat, 1, which.max))
+  yv.hat <- unname(cl[apply(yv.hat, 1, which.max)])
   yv.hat
 }
-qda <- function(xt, yt, xv, shrinkage=1) {
-  ### quadratic discriminant analysis with covariance shrinkage ###
+qda <- function(xt, yt, xv, shrinkage) {
+  ### quadratic discriminant analysis with covariance shrinkage (1=no shrinkage) ###
   stopifnot(shrinkage >= 0 & shrinkage <= 1)
   cl <- sort(unique(yt))
-  stopifnot(all(cl == 1:length(cl)))
   pi <- prop.table(table(yt))
-  mu <- lapply(cl, function(i) colMeans(xt[yt == i,]))
+  mu <- lapply(cl, function(i) colMeans(xt[yt == i,,drop=F]))
   sigma1 <- lapply(cl, function(i) { # sigma with shrinkage=1
-    xtc <- t(t(xt[yt == i,]) - mu[[i]]) # xt centered
+    xtc <- t(t(xt[yt == i,,drop=F]) - mu[[match(i, cl)]]) # xt centered
     t(xtc) %*% xtc / (nrow(xtc) - 1)
   })
   sigma0 <- Reduce("+", lapply(cl, function(i) { # sigma with shrinkage=0
-    xtc <- t(t(xt[yt == i,]) - mu[[i]]) # xt centered
+    xtc <- t(t(xt[yt == i,,drop=F]) - mu[[match(i, cl)]]) # xt centered
     t(xtc) %*% xtc
   }), 0) / (nrow(xt) - length(cl))
   sigma <- lapply(cl, function(i) {
-    sigma1[[i]] * shrinkage + sigma0 * (1 - shrinkage)
+    sigma1[[match(i, cl)]] * shrinkage + sigma0 * (1 - shrinkage)
   })
   det.sigma <- sapply(sigma, det)
   inv.sigma <- lapply(sigma, solve)
   a <- as.numeric(log(pi) - log(det.sigma) / 2)
   yv.hat <- sapply(cl, function(i) {
-    xvc <- t(t(xv) - mu[[i]])
-    a[i] - diag(xvc %*% inv.sigma[[i]] %*% t(xvc)) / 2
+    xvc <- t(t(xv) - mu[[match(i, cl)]])
+    a[i] - diag(xvc %*% inv.sigma[[match(i, cl)]] %*% t(xvc)) / 2
   })
-  yv.hat <- unname(apply(yv.hat, 1, which.max))
+  yv.hat <- unname(cl[apply(yv.hat, 1, which.max)])
   yv.hat
 }
-predict.party.alignment <- function(data) {
-  data %<>% subset(country == "Aus")
-  set.seed(1)
-  ord <- sample(1:nrow(data))
-  dt <- head(data[ord,], 300)
-  dv <- tail(data[ord,], -300)
-  #LDA
-  cl <- 1:8 # classes
-  self.perception <- na.set(sapply(cl, function(i) mean(dt$player1.party.lrpos[dt$player1.party == i], na.rm=T)), 6)
-  xt <- na.set(t(t(as.matrix(dt[, paste0("lrpos_party", cl)])) - self.perception), 0)
-  yt <- as.numeric(dt$player1.party)
-  xv <- na.set(t(t(as.matrix(dv[, paste0("lrpos_party", cl)])) - self.perception), 0)
-  yv <- as.numeric(dv$player1.party)
-  yv.hat <- lda(xt, yt, xv)
-  yv.baseline <- rep(which.max(table(yt)), nrow(xv))
-  m0 <- mean(yv == yv.baseline)
-  m1 <- mean(yv == yv.hat)
-  se <- sd((yv == yv.hat) - (yv == yv.baseline)) / sqrt(length(yv))
-  z <- (m1 - m0) / se
-  p <- pnorm(z)
-  c(m0=m0, m1=m1, se=se, z=z, p=p)
-  #QDA
-  cl <- 1:8 # classes
-  self.perception <- na.set(sapply(cl, function(i) mean(dt$player1.party.lrpos[dt$player1.party == i], na.rm=T)), 6)
-  xt <- na.set(t(t(as.matrix(dt[, paste0("lrpos_party", cl)])) - self.perception), 0)
-  yt <- as.numeric(dt$player1.party)
-  xv <- na.set(t(t(as.matrix(dv[, paste0("lrpos_party", cl)])) - self.perception), 0)
-  yv <- as.numeric(dv$player1.party)
-  out <- sapply(0:19/20, function(i) {
-    yv.hat <- qda(xt, yt, xv, i)
-    yv.baseline <- rep(which.max(table(yt)), nrow(xv))
-    mean(yv == yv.hat)
+score.predictions <- function(y, ...) {
+  preds <- list(...)
+  stopifnot(all(sapply(preds, function(pred) length(pred) == length(y))))
+  nms <- names(preds)
+  means <- sapply(nms, function(nm) mean(y == preds[[nm]]))
+  p <- sapply(nms, function(nm1) {
+    sapply(nms, function(nm2) {
+      se <- sd((y == preds[[nm1]]) - (y == preds[[nm2]])) / sqrt(length(y))
+      unname(2 * pnorm(-abs(means[nm1] - means[nm2]) / se))
+    })
   })
-  plot(out)
-    
+  p <- p * outer(1:nrow(p), 1:nrow(p), function(i, j) ifelse(i >= j, NA, 1))
+  list(mean=means, p=p)
+}
+add.fdr.for.prediction.scores <- function(out, q) {
+  ### large scale FDR over the prediction scores output ###
+  mat <- sapply(out, function(o) o$p)
+  nms <- rownames(out[[1]]$p)
+  k <- length(nms)
+  stopifnot(k %% 1 == 0)
+  p <- mat[!is.na(mat)]
+  rejected <- fdr(p, q)
+  mat[!is.na(mat)] <- rejected
+  for (i in 1:length(out)) {
+    out[[i]]$rejected <- matrix(as.logical(mat[,i]), nrow=k, ncol=k, dimnames=list(nms, nms))
+  }
+  out
+}
+predict.party.alignment <- function(data, train.frac, nfolds, fdr.q) {
+  countries <- unique(data$country)
+  out <- lapply(countries, function(cc) {
+    data.cc <- subset(data, country == cc)
+    set.seed(1)
+    ord <- sample(1:nrow(data.cc))
+    dt <- head(data.cc[ord,], nrow(data.cc) * train.frac)
+    dv <- tail(data.cc[ord,], -nrow(dt))
+    # prepare covariates and response
+    cl <- 1:8 # classes
+    self.perception <- na.set(sapply(cl, function(i) mean(dt$player1.party.lrpos[dt$player1.party == i], na.rm=T)), 6)
+    xt <- na.set(t(t(as.matrix(dt[, paste0("lrpos_party", cl)])) - self.perception), 0)
+    yt <- as.numeric(dt$player1.party)
+    xv <- na.set(t(t(as.matrix(dv[, paste0("lrpos_party", cl)])) - self.perception), 0)
+    # predictions
+    yv.hat.baseline <- rep(which.max(table(yt)), nrow(xv)) # predict mode
+    yv.hat.lda <- lda(xt, yt, xv) # LDA
+    yv.hat.qda <- qda(xt, yt, xv, 0.99) # QDA, no shrinkage
+    # QDA with shrinkage determined by cross validation
+    fac <- floor((1:nrow(xt) - 1) / nrow(xt) * nfolds) + 1
+    shrinkage.vals <- 0:19/20
+    cv.res <- sapply(1:nfolds, function(f) {
+      mask <- fac != f
+      xtt <- xt[mask,]
+      ytt <- yt[mask]
+      xtv <- xt[!mask,]
+      ytv <- yt[!mask]
+      sapply(shrinkage.vals, function(i) {
+        ytv.hat <- qda(xtt, ytt, xtv, i)
+        sum(ytv == ytv.hat)
+        })
+      })
+    shrinkage <- shrinkage.vals[which.max(rowSums(cv.res))]
+    yv.hat.qda.cv <- qda(xt, yt, xv, shrinkage)
+    # score predictions
+    yv <- as.numeric(dv$player1.party)
+    score.predictions(yv, baseline=yv.hat.baseline, lda=yv.hat.lda,
+                      #qda=yv.hat.qda, 
+                      qda.cv=yv.hat.qda.cv)
+  })
+  names(out) <- countries
+  out %<>% add.fdr.for.prediction.scores(fdr.q)
+  out
 }
