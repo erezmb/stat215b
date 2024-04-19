@@ -433,15 +433,14 @@ lda.stein.ma <- function(xt, yt, xv) {
     xtc <- t(t(xt[yt == i,,drop=F]) - mu[,match(i, cl)]) # xt centered
     t(xtc) %*% xtc
   }), 0) / (nrow(xt) - length(cl))
-  inv.sigma <- solve(sigma)
-  r <- chol(inv.sigma)
+  r <- chol(solve(sigma))
   inv.r <- solve(r)
   z <- r %*% mu
   m <- rowMeans(z)
   a <- sum((z - m)^2) / nrow(z) / (ncol(z) - 1) - mean(1/n)
   u <- as.numeric(inv.r %*% m)
-  mu.adj <- u + t(t(mu - u) * (1 - 1/(1 + a * n)))
-  b <- inv.sigma %*% mu.adj # y.hat = argmax(b*x + a)
+  mu.adj <- u + t(t(mu - u) * (1 - 1/(1 + a*n)))
+  b <- solve(sigma) %*% mu.adj # y.hat = argmax(b*x + a)
   a <- as.numeric(log(pi) - diag(t(mu.adj) %*% b / 2))
   yv.hat <- t(t(xv %*% b) + a)
   yv.hat <- unname(cl[apply(yv.hat, 1, which.max)])
@@ -506,18 +505,15 @@ predict.party.alignment <- function(data, train.frac, nfolds, fdr.q) {
   countries <- unique(data$country)
   out <- lapply(countries, function(cc) {
     data.cc <- subset(data, country == cc)
-    set.seed(1)
+    set.seed(2)
     ord <- sample(1:nrow(data.cc))
     dt <- head(data.cc[ord,], nrow(data.cc) * train.frac)
     dv <- tail(data.cc[ord,], -nrow(dt))
     # prepare covariates and response
     cl <- 1:8 # classes
-    #self.perception <- na.set(sapply(cl, function(i) mean(dt$player1.party.lrpos[dt$player1.party == i], na.rm=T)), 6)
     avg.lrpos <- colMeans(dt[,paste0("lrpos_party", 1:8)], na.rm=T)
-    #xt <- na.set(t(t(as.matrix(dt[, paste0("lrpos_party", cl)])) - self.perception), 0)
     xt <- na.set(t(t(as.matrix(dt[, paste0("lrpos_party", cl)])) - avg.lrpos), 0)
     yt <- as.numeric(dt$player1.party)
-    #xv <- na.set(t(t(as.matrix(dv[, paste0("lrpos_party", cl)])) - self.perception), 0)
     xv <- na.set(t(t(as.matrix(dv[, paste0("lrpos_party", cl)])) - avg.lrpos), 0)
     # predictions
     yv.hat.baseline <- rep(which.max(table(yt)), nrow(xv)) # predict mode
