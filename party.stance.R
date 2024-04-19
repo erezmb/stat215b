@@ -267,7 +267,6 @@ inner.match <- function(x, nm, l) {
   l.idx <- 1:length(l.nm) - l.offset
   l.idx[match(paste(nm, x), paste(l.nm, unlist(l, use.names=F)))]
 }
-na.set <- function(x, val) ifelse(is.na(x), val, x)
 normalize.party.name <- function(nm) gsub("–", "-", nm)
 encode.party <- function(party.nm, country) {
   ### party name to {1, 2, ..., 8, None, Other, Unranked} ###
@@ -385,4 +384,41 @@ analyze.opposide.side.perception <- function(data, fdr.q, bt.num.iterations) {
   }))
   out$rejected <- fdr(out$p, fdr.q)
   out
+}
+lda <- function(xt, yt, xv) {
+  cl <- sort(unique(yt))
+  pi <- prop.table(table(yt))
+  mu <- sapply(cl, function(i) colMeans(xt[yt == i,]))
+  sigma <- Reduce("+", lapply(cl, function(i) {
+    xtc <- t(t(xt[yt == i,]) - mu[i]) # xt centered
+    t(xtc) %*% xtc
+  }), 0) / (nrow(xt) - length(cl))
+  b <- solve(sigma) %*% mu # y.hat = argmax(b*x + a)
+  a <- as.numeric(log(pi) - diag(t(mu) %*% b / 2))
+  yv.hat <- t(t(xv %*% b) + a)
+  yv.hat <- unname(apply(yv.hat, 1, which.max))
+  yv.hat
+}
+predict.party.alignment <- function(data) {
+  data %<>% subset(country == "Aus")
+  set.seed(1)
+  ord <- sample(1:nrow(data))
+  dt <- head(data[ord,], 300)
+  dv <- tail(data[ord,], -300)
+  #LDA
+  cl <- 1:8 # classes
+  self.perception <- na.set(sapply(cl, function(i) mean(dt$player1.party.lrpos[dt$player1.party == i], na.rm=T)), 6)
+  xt <- na.set(t(t(as.matrix(dt[, paste0("lrpos_party", cl)])) - self.perception), 0)
+  yt <- as.numeric(dt$player1.party)
+  xv <- na.set(t(t(as.matrix(dv[, paste0("lrpos_party", cl)])) - self.perception), 0)
+  yv <- as.numeric(dv$player1.party)
+  yv.hat <- lda(xt, yt, xv)
+  yv.baseline <- rep(which.max(table(yt)), nrow(xv))
+  m0 <- mean(yv == yv.baseline)
+  m1 <- mean(yv == yv.hat)
+  se <- sd((yv == yv.hat) - (yv == yv.baseline)) / sqrt(length(yv))
+  z <- (m1 - m0) / se
+  p <- pnorm(z)
+  c(m0=m0, m1=m1, se=se, z=z, p=p)
+  ##
 }
