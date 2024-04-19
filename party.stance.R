@@ -401,6 +401,27 @@ lda <- function(xt, yt, xv) {
   yv.hat <- unname(cl[apply(yv.hat, 1, which.max)])
   yv.hat
 }
+lda.bad.stein <- function(xt, yt, xv) {
+  cl <- sort(unique(yt))
+  n <- as.numeric(table(yt))
+  pi <- prop.table(n)
+  mu <- sapply(cl, function(i) colMeans(xt[yt == i,,drop=F]))
+  sigma <- Reduce("+", lapply(cl, function(i) {
+    xtc <- t(t(xt[yt == i,,drop=F]) - mu[,match(i, cl)]) # xt centered
+    t(xtc) %*% xtc
+  }), 0) / (nrow(xt) - length(cl))
+  inv.sigma <- solve(sigma)
+  r <- chol(inv.sigma)
+  z <- r %*% mu
+  a <- mean(t(t(z^2) - 1/n))
+  theta <- t(t(z) * (1 - 1/(1 + a * n)))
+  mu.adj <- solve(r) %*% theta
+  b <- inv.sigma %*% mu.adj # y.hat = argmax(b*x + a)
+  a <- as.numeric(log(pi) - diag(t(mu.adj) %*% b / 2))
+  yv.hat <- t(t(xv %*% b) + a)
+  yv.hat <- unname(cl[apply(yv.hat, 1, which.max)])
+  yv.hat
+}
 qda <- function(xt, yt, xv, shrinkage) {
   ### quadratic discriminant analysis with covariance shrinkage (1=no shrinkage) ###
   stopifnot(shrinkage >= 0 & shrinkage <= 1)
@@ -466,14 +487,18 @@ predict.party.alignment <- function(data, train.frac, nfolds, fdr.q) {
     dv <- tail(data.cc[ord,], -nrow(dt))
     # prepare covariates and response
     cl <- 1:8 # classes
-    self.perception <- na.set(sapply(cl, function(i) mean(dt$player1.party.lrpos[dt$player1.party == i], na.rm=T)), 6)
-    xt <- na.set(t(t(as.matrix(dt[, paste0("lrpos_party", cl)])) - self.perception), 0)
+    #self.perception <- na.set(sapply(cl, function(i) mean(dt$player1.party.lrpos[dt$player1.party == i], na.rm=T)), 6)
+    avg.lrpos <- colMeans(dt[,paste0("lrpos_party", 1:8)], na.rm=T)
+    #xt <- na.set(t(t(as.matrix(dt[, paste0("lrpos_party", cl)])) - self.perception), 0)
+    xt <- na.set(t(t(as.matrix(dt[, paste0("lrpos_party", cl)])) - avg.lrpos), 0)
     yt <- as.numeric(dt$player1.party)
-    xv <- na.set(t(t(as.matrix(dv[, paste0("lrpos_party", cl)])) - self.perception), 0)
+    #xv <- na.set(t(t(as.matrix(dv[, paste0("lrpos_party", cl)])) - self.perception), 0)
+    xv <- na.set(t(t(as.matrix(dv[, paste0("lrpos_party", cl)])) - avg.lrpos), 0)
     # predictions
     yv.hat.baseline <- rep(which.max(table(yt)), nrow(xv)) # predict mode
     yv.hat.lda <- lda(xt, yt, xv) # LDA
     yv.hat.qda <- qda(xt, yt, xv, 0.99) # QDA, no shrinkage
+    yv.hat.lda.bad.stein <- lda.bad.stein(xt, yt, xv)
     # QDA with shrinkage determined by cross validation
     fac <- floor((1:nrow(xt) - 1) / nrow(xt) * nfolds) + 1
     shrinkage.vals <- 0:19/20
@@ -490,10 +515,14 @@ predict.party.alignment <- function(data, train.frac, nfolds, fdr.q) {
       })
     shrinkage <- shrinkage.vals[which.max(rowSums(cv.res))]
     yv.hat.qda.cv <- qda(xt, yt, xv, shrinkage)
+    # random forest
+    #yv.hat.rf <- predict(randomForest(x=xt, y=as.factor(yt)), xv)
     # score predictions
     yv <- as.numeric(dv$player1.party)
     score.predictions(yv, baseline=yv.hat.baseline, lda=yv.hat.lda,
-                      #qda=yv.hat.qda, 
+                      #qda=yv.hat.qda,
+                      #rf=yv.hat.rf,
+                      lda.bad.stein=yv.hat.lda.bad.stein,
                       qda.cv=yv.hat.qda.cv)
   })
   names(out) <- countries
