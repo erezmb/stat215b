@@ -347,6 +347,7 @@ analyze.placement.within.party <- function(data, fdr.q, counterfactual.alpha) {
     data.frame(country=cc, n=n, mean=mean(x), p=p, n.missing=n.total[cc] - n, counterfactual.mean=counterfactual.mean)
   }))
   out$rejected <- fdr(out$p, fdr.q)
+  out$credible <- out$rejected & abs(out$mean - out$counterfactual.mean) > 2 * abs(out$mean)
   out
 }
 analyze.opposide.side.perception <- function(data, fdr.q, bt.num.iterations) {
