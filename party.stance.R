@@ -539,7 +539,6 @@ predict.party.alignment <- function(data, train.frac, nfolds, fdr.q) {
     # score predictions
     yv <- as.numeric(dv$player1.party)
     score.predictions(yv, baseline=yv.hat.baseline, lda=yv.hat.lda,
-                      lda.stein.a=yv.hat.lda.stein.a,
                       lda.stein.ma=yv.hat.lda.stein.ma,
                       qda.cv=yv.hat.qda.cv)
   })
