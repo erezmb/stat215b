@@ -458,12 +458,11 @@ predict.party.alignment <- function(data) {
   yt <- as.numeric(dt$player1.party)
   xv <- na.set(t(t(as.matrix(dv[, paste0("lrpos_party", cl)])) - self.perception), 0)
   yv <- as.numeric(dv$player1.party)
-  yv.hat <- qda(xt, yt, xv, 0)
-  yv.baseline <- rep(which.max(table(yt)), nrow(xv))
-  m0 <- mean(yv == yv.baseline)
-  m1 <- mean(yv == yv.hat)
-  se <- sd((yv == yv.hat) - (yv == yv.baseline)) / sqrt(length(yv))
-  z <- (m1 - m0) / se
-  p <- pnorm(z)
-  c(m0=m0, m1=m1, se=se, z=z, p=p)
+  out <- sapply(0:19/20, function(i) {
+    yv.hat <- qda(xt, yt, xv, i)
+    yv.baseline <- rep(which.max(table(yt)), nrow(xv))
+    mean(yv == yv.hat)
+  })
+  plot(out)
+    
 }
