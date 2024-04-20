@@ -174,6 +174,19 @@ trust_religion <- t.test(filter(trust_data, samereligion == "0_diff")$pl2gets,
 dict_religion <- t.test(filter(dict_data, samereligion == "0_diff")$pl2gets,
        filter(dict_data, samereligion == "1_same")$pl2gets)$conf.int
 
+dffin_male_male_dict <- dffin %>% filter(sex == "male",samesex=="1_same",game=="dict")
+dffin_male_female_dict <- dffin %>% filter(sex == "male",samesex=="0_diff",game=="dict")
+dffin_female_female_dict <- dffin %>% filter(sex == "female",samesex=="1_same",game=="dict")
+dffin_female_male_dict <- dffin %>% filter(sex == "female",samesex=="0_diff",game=="dict")
+dffin_male_male_trust <- dffin %>% filter(sex == "male",samesex=="1_same",game=="trust")
+dffin_male_female_trust <- dffin %>% filter(sex == "male",samesex=="0_diff",game=="trust")
+dffin_female_female_trust <- dffin %>% filter(sex == "female",samesex=="1_same",game=="trust")
+dffin_female_male_trust <- dffin %>% filter(sex == "female",samesex=="0_diff",game=="trust")
+male_female_dict = t.test(dffin_male_female_dict$pl2gets,dffin_male_male_dict$pl2gets)$conf.int
+female_male_dict = t.test(dffin_female_male_dict$pl2gets,dffin_female_female_dict$pl2gets)$conf.int
+male_female_trust = t.test(dffin_male_female_trust$pl2gets,dffin_male_male_trust$pl2gets)$conf.int
+female_male_trust = t.test(dffin_female_male_trust$pl2gets,dffin_female_female_trust$pl2gets)$conf.int
+
 interval_df <- data.frame(game = c(rep("Trust Game", 6),rep("Dictator Game",6)),
                           group = rep(c("Gender", "Age", "Class", "Religion",
                                         "Nationality", "Party"), 2),
@@ -195,13 +208,66 @@ interval_df$group <- factor(interval_df$group, levels = rev(c("Gender", "Age",
 
 # plot all confidence intervals for trust game in ggplot
 ggplot(interval_df, aes(y = group, x = (lower + upper) / 2)) +
-  geom_errorbarh(aes(xmin = lower, xmax = upper), height = 0.1) +
-  geom_point(col = "navy") +
+  geom_vline(xintercept = 0, col = "darkgrey", lwd = 1, linetype = "dashed") +
+  geom_errorbarh(aes(xmin = lower, xmax = upper), height = 0.1, lwd = 1) +
+  geom_point(col = "navy", size = 3) +
   facet_wrap(~game) +
+  theme_bw() + 
+  #make label text size bigger
   labs(x = "(Out-Group Tokens Given) - (In-Group Tokens Given)",
        y = "Demographic of Interest",
        title = "Effects of Demographic Differences on Token Allocation") +
-  coord_cartesian(xlim = c(-1.1, 1.1)) +
-  # name the titles of each facet "Dictator Game" and "Trust Game"
-  theme_bw()
+  theme(axis.text.y = element_text(size = 14),
+        axis.text.x = element_text(size = 14),
+        axis.title.x = element_text(size = 18),
+        axis.title.y = element_text(size = 18),
+        title = element_text(size = 24),
+        strip.text.x = element_text(size = 18)) +
+  coord_cartesian(xlim = c(-1.1, 1.1))
+
+
+
+interval_df <- data.frame(game = c(rep("Trust Game", 7),rep("Dictator Game",7)),
+                          group = rep(c("Gender = Male", "Gender = Female",
+                                        "Age", "Class", "Religion",
+                                        "Nationality", "Party"), 2),
+                          lower = c(male_female_trust[1], female_male_trust[1],
+                                    trust_age[1], trust_class[1],
+                                    trust_religion[1], trust_national[1],
+                                    trust_partisan[1], male_female_dict[1],
+                                    female_male_dict[1],
+                                    dict_age[1], dict_class[1],
+                                    dict_religion[1], dict_national[1],
+                                    dict_partisan[1]),
+                          upper = c(male_female_trust[2], female_male_trust[2],
+                                    trust_age[2], trust_class[2],
+                                    trust_religion[2], trust_national[2],
+                                    trust_partisan[2],
+                                    male_female_dict[2], female_male_dict[2],
+                                    dict_age[2], dict_class[2],
+                                    dict_religion[2], dict_national[2],
+                                    dict_partisan[2]))
+interval_df$group <- factor(interval_df$group, levels = rev(c("Gender = Male",
+                                                              "Gender = Female", "Age",
+                                                              "Class", "Religion",
+                                                              "Nationality", "Party")))
+
+# plot all confidence intervals for trust game in ggplot
+ggplot(interval_df, aes(y = group, x = (lower + upper) / 2)) +
+  geom_vline(xintercept = 0, col = "darkgrey", lwd = 1, linetype = "dashed") +
+  geom_errorbarh(aes(xmin = lower, xmax = upper), height = 0.1, lwd = 1) +
+  geom_point(col = "navy", size = 3) +
+  facet_wrap(~game) +
+  theme_bw() + 
+  #make label text size bigger
+  labs(x = "(Out-Group Tokens Given) - (In-Group Tokens Given)",
+       y = "Demographic of Interest",
+       title = "Effects of Demographic Differences on Token Allocation") +
+  theme(axis.text.y = element_text(size = 14),
+        axis.text.x = element_text(size = 14),
+        axis.title.x = element_text(size = 18),
+        axis.title.y = element_text(size = 18),
+        title = element_text(size = 24),
+        strip.text.x = element_text(size = 18)) +
+  coord_cartesian(xlim = c(-1.1, 1.1))
 
