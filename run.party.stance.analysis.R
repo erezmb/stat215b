@@ -22,7 +22,7 @@ key <- c(AT="Aus", BE="Bel", BG="Bul", HR="Cro", CZ="Cze", DK="Den", EE="Est",
          FI="Fin", FR="Fra", DE="Ger", EL="Gre", HU="Hun", IE="Ire", IT="Ita",
          LV="Lat", LT="Lit", NL="Net", PL="Pol", PT="Por", RO="Rom", 
          SK="Slovakia", SI="Slovenia", ES="Spa", SE="Swe", UK="UK")
-xx$value <- out$mean[match(key[xx$geo], out1$country)]
+xx$value <- out1$mean[match(key[xx$geo], out1$country)]
 xx %>% ggplot(aes(fill=round(4 * value) / 4)) + 
   geom_sf() + 
   ggtitle("Placement Within Party") +
